@@ -2,7 +2,9 @@
 import asyncio
 import sys
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import Response
 import uvicorn
+import json
 from config import settings
 from data_loader import load_visa_data
 from file_processing import process_pdf, process_docx, process_text
@@ -32,7 +34,7 @@ async def process_cv_and_analysis(cv: UploadFile) -> dict:
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type.")
     
-    analysis_result = perform_analysis(cv_text, o1a_criteria)
+    analysis_result = await perform_analysis(cv_text, o1a_criteria)
     return analysis_result
 
 def filter_analysis_results(full_result: dict) -> dict:
@@ -79,8 +81,10 @@ async def analyze_cv_endpoint(cv: UploadFile = File(...), verbose: bool = False)
         final_output = filter_analysis_results(full_result)
     else:
         final_output = full_result
-        
-    return final_output
+    
+    # Slightly unnecessary, but useful for parsing by human eye for this exercise
+    pretty_json = json.dumps(final_output, indent=4)
+    return Response(content=pretty_json, media_type="application/json")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

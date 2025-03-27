@@ -3,6 +3,7 @@ import asyncio
 import json
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain.schema import HumanMessage
 from pydantic import BaseModel
 from langchain.output_parsers import PydanticOutputParser
 
@@ -12,8 +13,8 @@ from config import settings
 llm = ChatOpenAI(
     openai_api_key=settings.openai_api_key,
     model=settings.llm_model,
-    temperature=0.2,  
-    max_tokens=500
+    temperature=0.0,  
+    max_tokens=600
 )
 
 class CriterionResult(BaseModel):
@@ -107,7 +108,9 @@ async def query_llm(prompt: str) -> dict:
     Uses LangChain's PydanticOutputParser to enforce JSON formatting.
     """
     def _query():
-        return llm.predict(prompt)
+        # Wrap the prompt in a HumanMessage and invoke the model.
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return response.content
     
     response_text = await asyncio.to_thread(_query)
     
@@ -182,8 +185,13 @@ def score_eligibility(criteria_responses: list) -> str:
 async def perform_analysis(cv_text: str, visa_info: dict) -> dict:
     """
     Analyze the CV text against the O-1A visa criteria concurrently.
-    First, check for super-criteria. If met, return 'high' eligibility immediately.
-    Otherwise, concurrently evaluate each criterion using LLM calls and aggregate the results.
+    
+    This version runs the super-criteria evaluation in parallel with the standard criteria.
+    - If a super-criteria is provided, its task is run concurrently.
+    - All criteria tasks are gathered together.
+    - If the super-criteria result (if present) has a rating >= 9, overall eligibility is "high".
+    - Otherwise, the overall eligibility is determined by aggregating the standard criteria responses.
+    
     Returns a dictionary with:
       - "criteria_results": A mapping of criterion names to their individual responses.
       - "eligibility_rating": Overall eligibility rating ("low", "medium", "high").
@@ -192,33 +200,48 @@ async def perform_analysis(cv_text: str, visa_info: dict) -> dict:
     comparable_evidence = visa_info.get("comparable_evidence", "")
     super_criteria = visa_info.get("super_criteria", None)
     
-    # Evaluate super-criteria if provided.
+    tasks = []
+
+    # If super-criteria is provided, schedule it as a task.
+    super_task = None
     if super_criteria:
-        super_result = await evaluate_super_criteria(cv_text, general_instructions)
-        if "rating" in super_result and isinstance(super_result["rating"], int) and super_result["rating"] >= 9:
-            return {
-                "criteria_results": {"super_criteria": super_result},
-                "eligibility_rating": "high"
-            }
-    
-    # Evaluate individual criteria concurrently.
-    tasks = [
-        evaluate_criterion(cv_text, crit, general_instructions, comparable_evidence)
+        super_task = asyncio.create_task(evaluate_super_criteria(cv_text, general_instructions))
+        tasks.append(super_task)
+
+    # Schedule standard criteria evaluation tasks.
+    standard_tasks = [
+        asyncio.create_task(evaluate_criterion(cv_text, crit, general_instructions, comparable_evidence))
         for crit in visa_info.get("criteria", [])
     ]
-    criteria_responses = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks.extend(standard_tasks)
+
+    # Run all tasks concurrently.
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Collect responses and count criteria that are strongly met.
     results = {}
-    for idx, response in enumerate(criteria_responses):
+    # Separate out the super-criteria result if it was scheduled.
+    if super_task is not None:
+        super_result = responses[0]  # the first task is the super-task
+        standard_responses = responses[1:]
+    else:
+        super_result = None
+        standard_responses = responses
+
+    # Process standard criteria responses.
+    for idx, response in enumerate(standard_responses):
         criterion_name = visa_info["criteria"][idx]["name"]
         if isinstance(response, Exception):
             results[criterion_name] = {"error": str(response)}
         else:
             results[criterion_name] = response
 
-    overall_rating = score_eligibility(criteria_responses)
-    
+    # Check the super-criteria result, if it exists.
+    if super_result and "rating" in super_result and isinstance(super_result["rating"], int) and super_result["rating"] >= 9:
+        results["super_criteria"] = super_result
+        overall_rating = "high"
+    else:
+        overall_rating = score_eligibility(standard_responses)
+
     return {
         "criteria_results": results,
         "eligibility_rating": overall_rating

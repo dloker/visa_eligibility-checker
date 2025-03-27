@@ -57,7 +57,6 @@ async def process_pdf(file: UploadFile) -> str:
     if not cleaned_text:
         raise HTTPException(status_code=400, detail="No text could be extracted from the PDF.")
     
-    print(cleaned_text)
     return cleaned_text
 
 async def process_docx(file: UploadFile) -> str:
@@ -71,7 +70,28 @@ async def process_docx(file: UploadFile) -> str:
 
 async def process_text(file: UploadFile) -> str:
     """
-    Asynchronously process a plain text file and return its decoded content.
+    Asynchronously process a plain text file.
+    
+    - Reads file content asynchronously.
+    - Decodes the content using UTF-8 with error replacement to remove problematic characters.
+    - If the replacement causes a significant reduction in length (indicating heavy corruption),
+      raises an HTTPException.
+    - Otherwise, cleans the decoded text to normalize spacing and remove unwanted elements.
+    
+    Returns:
+        A cleaned version of the plain text content.
     """
     content = await file.read()
-    return content.decode('utf-8')
+    # Decode with error replacement
+    decoded = content.decode('utf-8', errors='replace')
+    
+    # Heuristically check if the decoded text is significantly shorter than the raw decoded version without errors.
+    # Here we assume that if more than 20% of characters were replaced, it's likely a bad decode.
+    # For a more robust solution, you could compare counts of the replacement character (�).
+    replacement_char = "�"
+    if decoded.count(replacement_char) > 0.2 * len(decoded):
+        raise HTTPException(status_code=400, detail="Text file contains too many invalid characters.")
+    
+    # Clean the text (this step normalizes spacing while preserving newlines/tabs)
+    cleaned = clean_text(decoded)
+    return cleaned

@@ -1,3 +1,112 @@
+# Visa Eligibility Checker
+
+An AI-powered tool to analyze resumes for O‑1A visa eligibility. This project uses FastAPI, LangChain with OpenAI's GPT-4o, and various processing modules to extract, clean, and evaluate resume data based on USCIS criteria.
+
+## Features
+
+- **Resume Parsing:** Supports PDF, and TXT files.
+- **Text Cleaning:** Removes non-ASCII characters, emails, phone numbers, and physical addresses while preserving formatting.
+- **LLM Analysis:** Uses chain-of-thought prompting to evaluate resume evidence against 8 criteria (plus super-criteria) for O‑1A eligibility.
+- **Asynchronous Execution:** Processes criteria concurrently for improved performance.
+- **Configurable:** Uses a YAML file and a .env file (for the OpenAI API key) to configure the system.
+- **Testing:** Comprehensive test suite using pytest and pytest-asyncio.
+
+## Requirements
+
+- Python 3.8+
+- [FastAPI](https://fastapi.tiangolo.com/)
+- [Uvicorn](https://www.uvicorn.org/)
+- [LangChain](https://github.com/hwchase17/langchain) & [langchain-openai](https://pypi.org/project/langchain-openai/)
+- [PyMuPDF (fitz)](https://pymupdf.readthedocs.io/)
+- [python-dotenv](https://pypi.org/project/python-dotenv/)
+- [PyYAML](https://pyyaml.org/)
+- [Pydantic](https://pydantic-docs.helpmanual.io/)
+- [pytest](https://docs.pytest.org/), [pytest-asyncio](https://pypi.org/project/pytest-asyncio/)
+
+## Setup
+
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/<your-username>/visa-eligibility-checker.git
+   cd visa-eligibility-checker
+
+
+2. **Create & Activate a Virtual Environment:**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   ```
+
+3. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure Environment Variables:**
+   Create a `.env` file in the project root (do not commit this file). For example:
+   ```
+   OPENAI_API_KEY=your_openai_api_key_here
+   ```
+
+5. **Configure YAML Settings:**
+   Ensure your `config.yaml` is set up correctly:
+   ```yaml
+   visa_data_path: "data/O1-A-visa.json"
+   llm_api_endpoint: "https://api.openai.com/v1/chat/completions"
+   llm_model: "gpt-4o"
+   ```
+
+## Running the Application
+
+1. **Start the Server:**
+   ```bash
+   uvicorn main:app --reload
+   ```
+2. **Access the API Docs:**
+   - Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
+   - Redoc: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+## Using the API
+
+- **Endpoint:** `/analyze_cv`
+- **Method:** `POST`
+- **Parameters:**
+  - `cv` (file): The resume to analyze (supports PDF and TXT (and soon DOCX)).
+  - `verbose` (query, boolean): Optional. Set to `true` to include detailed chain-of-thought reasoning.
+- **Response:** Returns a JSON object with:
+  - `eligibility_rating`: Overall eligibility ("low", "medium", or "high").
+  - `criteria_results`: For each criterion, a rating (1–10) and a list of qualifying evidence (and optionally the chain-of-thought if `verbose` is `true`).
+
+**Example cURL Request:**
+```bash
+curl -X POST "http://localhost:8000/analyze_cv?verbose=false" -F "cv=@/path/to/resume.pdf"
+```
+
+## Running Tests
+
+Run the complete test suite using:
+```bash
+pytest tests/
+```
+This command will run all unit and integration tests, including tests for resume parsing, prompt generation, and LLM integration.
+
+## Project Structure
+
+```
+visa-eligibility-checker/
+├── main.py                # FastAPI app and endpoint definitions
+├── config.py              # Configuration loader (YAML + .env)
+├── data_loader.py         # Loader for O1-A-visa.json criteria data
+├── file_processing.py     # Resume parsing functions (PDF, DOCX, TXT)
+├── analysis.py            # LLM analysis and prompt building functions
+├── data_cleanser.py       # Text cleaning utilities
+├── data/
+│   └── O1-A-visa.json     # Visa eligibility criteria and instructions
+├── config.yaml            # YAML configuration file
+├── .env                   # Environment file (contains OPENAI_API_KEY)
+└── tests/                 # Test suite (unit and integration tests)
+```
+
 # System Design Document: O-1A Visa Eligibility Analysis Platform
 
 ## Objective
