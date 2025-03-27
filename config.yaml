@@ -1,0 +1,4 @@
+# config.yaml
+visa_data_path: "data/O1-A-visa.json"
+llm_api_endpoint: "https://api.openai.com/v1/chat/completions"
+llm_model: "gpt-4o"
