@@ -109,6 +109,23 @@ visa-eligibility-checker/
 └── tests/                 # Test suite (unit and integration tests)
 ```
 
+## Running with Docker
+
+Build the Docker image:
+```bash
+docker build -t visa-eligibility-checker .
+```
+
+Run the container (mapping port 8000 on the host):
+```bash
+docker run -p 8000:8000 visa-eligibility-checker
+```
+
+You can now access the API at [http://localhost:8000](http://localhost:8000). For example, to analyze a PDF resume:
+```bash
+curl -X POST "http://localhost:8000/analyze_cv?verbose=false" -F "cv=@/path/to/resume.pdf"
+```
+
 # System Design Document: O-1A Visa Eligibility Analysis Platform
 
 ## Objective

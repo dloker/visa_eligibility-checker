@@ -1,0 +1,12 @@
+# Ignore the tests folder
+tests/
+
+# Ignore all PDF files
+*.pdf
+
+# Optionally, ignore other files or folders (e.g., your local virtual environment)
+.venv/
+# Ignore Python bytecode cache directories
+__pycache__/
+*/__pycache__/
+.pyttest_cache/
