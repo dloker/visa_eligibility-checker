@@ -1,3 +1,5 @@
+System design and choices start around line 112.
+
 # Visa Eligibility Checker
 
 An AI-powered tool to analyze resumes for O‑1A visa eligibility. This project uses FastAPI, LangChain with OpenAI's GPT-4o, and various processing modules to extract, clean, and evaluate resume data based on USCIS criteria.
@@ -141,7 +143,6 @@ Beyond the scope:
 ### 2. **CV Preprocessor (Serverless)**
 - Triggered by the API Gateway upon file upload.
 - Extracts and cleans text from PDF, DOCX, or TXT formats.
-- Stores results in a Redis cache with a hashed CV ID.
 - Returns a normalized CV text blob to downstream systems.
 
 **Benefits**: Stateless, highly parallelizable, and auto-scales on demand.
@@ -151,7 +152,7 @@ Beyond the scope:
 - Loads the 8 O-1A criteria from MongoDB (or memory).
 - Sends the CV text and criteria to the LLM API (e.g., OpenAI, or a future self-hosted model).
 - Matches evidence to each criterion and returns structured results.
-- Writes results to Redis cache keyed by CV ID for retry handling or follow-up.
+- Writes results to Redis cache keyed by CV ID or file hash for retry handling or follow-up.
 
 **Scalable, modular, and LLM-agnostic** — future-ready for running on a local GPU cluster or model farm.
 
@@ -170,7 +171,7 @@ Can also return explanations or criteria justifications in a clean, user-facing 
 
 Ensures idempotent, fault-tolerant service flow.
 
-### 6. **MongoDB (Read-Heavy, Local or Cloud)**
+### 6. **MongoDB (Read-Heavy, Cloud)**
 - Stores static reference data (visa types, criteria descriptions, legal text).
 - Could store analysis history or user sessions later if needed.
 
@@ -178,8 +179,8 @@ Ensures idempotent, fault-tolerant service flow.
 
 1. User uploads CV → API Gateway
 2. API Gateway routes to CV Preprocessor (serverless)
-3. CV Preprocessor extracts text → saves to Redis → triggers LLM Analysis
-4. LLM Analysis reads from Redis → calls LLM API with CV + criteria → saves result to Redis
+3. CV Preprocessor extracts text → triggers LLM Analysis
+4. LLM Analysis reads from Redis → calls LLM API with CV + criteria → saves result to Redis with Md5 hash of resume, TTL 24 hours and LFU
 5. Eligibility Service reads structured matches → scores eligibility → returns result to client
 
 
@@ -239,7 +240,7 @@ Tradeoff: Chose MongoDB over SQLite for better handling of nested criteria text 
   - Criteria text from DB
 - **Output**:
   - List of matched criteria with rationale
-  - Rating: `low`, `medium`, `high`
+  - Rating: 1 - 10 (1 low, 10 high)
 - **Pros**:
   - Can evaluate nuance across ambiguous language
   - Easy to fine-tune or prompt engineer
@@ -248,7 +249,7 @@ Tradeoff: Chose MongoDB over SQLite for better handling of nested criteria text 
   - Sensitive to prompt structure
   - Expensive at scale (unless local model used)
 
-Consider using LangChain or LlamaIndex if chaining prompts or using a vector DB later.
+I used LangChain to enforce response pattern and also to streamline prompting.
 
 ### 5. **Eligibility Scorer**
 - **Logic**:
@@ -263,7 +264,7 @@ Consider using LangChain or LlamaIndex if chaining prompts or using a vector DB 
 
 ## Data Storage
 
-### MongoDB (Local)
+### MongoDB
 - **Used for**:
   - Visa criteria documents
   - Parsed CVs and other evidence (optional)
@@ -273,9 +274,9 @@ Consider using LangChain or LlamaIndex if chaining prompts or using a vector DB 
 
 - **Backend**: FastAPI, Pydantic
 - **Parsing**: `PyMuPDF`, `python-docx`, `textract`
-- **LLM Access**: `openai`, `llama-cpp-python` (optional)
+- **LLM Access**: `openai`, `langchain`
 - **DB**: `pymongo`
-- **Testing**: `pytest`, `httpx`, `mongomock`
+- **Testing**: `pytest`, `httpx`
 
 ## Future Extensions
 
@@ -284,4 +285,9 @@ Consider using LangChain or LlamaIndex if chaining prompts or using a vector DB 
 - Upload **supporting documents** (e.g., PDFs of awards or press)
 - Use **LLM fine-tuning** for custom scoring logic
 - Add optional **web interface** for user input/review
+- Distill larger model reasoning and evaluations to fine-tune smaller model for this specific purpose
+- Test out new prompting with multiple criteria being evluated simultaneously
+- If using local LLM, leverage KV-caching and fine-tuning to store majority of prompt data
+    - Mixture of CAG vs RAG
+- Keep fresh data regarding salaries for various jobs in order to better handle "High Remuneration" criteria without having to hit the internet to search for each evaluation
 
