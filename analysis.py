@@ -1,6 +1,6 @@
 # analysis.py
 import asyncio
-import json
+import logging
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import HumanMessage
@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from langchain.output_parsers import PydanticOutputParser
 
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 # Initialize the LLM using LangChain with our configuration.
 llm = ChatOpenAI(
@@ -169,6 +171,7 @@ def score_eligibility(criteria_responses: list) -> str:
       - Medium: 3 to 5 criteria with rating >= 6.
       - Low: Fewer than 3 criteria with rating >= 6.
     """
+    logger.info("Scoring eligibility based on all criteria")
     positive_count = 0
     for response in criteria_responses:
         if isinstance(response, dict):
@@ -196,6 +199,8 @@ async def perform_analysis(cv_text: str, visa_info: dict) -> dict:
       - "criteria_results": A mapping of criterion names to their individual responses.
       - "eligibility_rating": Overall eligibility rating ("low", "medium", "high").
     """
+    
+    logger.info("Performing analysis of CV for visa criteria")
     general_instructions = visa_info.get("general_instructions", [])
     comparable_evidence = visa_info.get("comparable_evidence", "")
     super_criteria = visa_info.get("super_criteria", None)
@@ -215,8 +220,10 @@ async def perform_analysis(cv_text: str, visa_info: dict) -> dict:
     ]
     tasks.extend(standard_tasks)
 
+    logger.info("Gathering calls to LLM for analysis")
     # Run all tasks concurrently.
     responses = await asyncio.gather(*tasks, return_exceptions=True)
+    logger.info("All calls to LLM completed.")
     
     results = {}
     # Separate out the super-criteria result if it was scheduled.
@@ -237,11 +244,13 @@ async def perform_analysis(cv_text: str, visa_info: dict) -> dict:
 
     # Check the super-criteria result, if it exists.
     if super_result and "rating" in super_result and isinstance(super_result["rating"], int) and super_result["rating"] >= 9:
+        logger.info("Super criteria - Nobel Prize style accomplishment found")
         results["super_criteria"] = super_result
         overall_rating = "high"
     else:
         overall_rating = score_eligibility(standard_responses)
 
+    logger.info(f"Overall rating: {overall_rating}")
     return {
         "criteria_results": results,
         "eligibility_rating": overall_rating

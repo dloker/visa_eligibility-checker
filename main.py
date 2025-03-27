@@ -1,10 +1,12 @@
 # main.py
 import asyncio
 import sys
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.responses import Response
 import uvicorn
 import json
+import time
+import logging
 from config import settings
 from data_loader import load_visa_data
 from file_processing import process_pdf, process_docx, process_text
@@ -17,13 +19,28 @@ except FileNotFoundError as e:
     print(str(e))
     sys.exit(1)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"New request: {request.method} {request.url}")
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    logger.info(f"Completed in {process_time:.2f}s with status code {response.status_code}")
+    return response
 
 async def process_cv_and_analysis(cv: UploadFile) -> dict:
     """
     Process the CV file based on its type and run analysis against O1-A criteria.
     """
     file_type = cv.filename.split('.')[-1].lower()
+    logger.info(f"Processing CV from {cv.filename}")
 
     if file_type == "pdf":
         cv_text = await process_pdf(cv)
